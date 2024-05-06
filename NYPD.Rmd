@@ -1,0 +1,343 @@
+---
+title: "NYPD Shooting Incident Report"
+author: "Anon."
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## NYPD Shooting Incidents 1/1/2006 - 12/31/2022
+
+### Load Packages
+
+First, we will load some packages to help us get started.
+
+```{r echo=TRUE, message = FALSE}
+library(tidyverse)
+```
+
+### Import Data
+
+Next, we will import our data set. This data set is provided by the United States government and includes information about shooting incidents involving the New York Police Department (NYPD) from 2006 to 2022.
+
+```{r echo=TRUE, message = FALSE}
+url_in <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+shooting_data <- read_csv(url_in)
+```
+
+Let's have a look at a summary of our data.
+
+``` {r echo=TRUE, message = FALSE}
+summary(shooting_data)
+```
+
+### Clean Data
+
+Now, let's clean our data.
+
+#### Exclude Irrelevant Variables
+
+First, we will get rid of any variables that we do not need for our analysis.
+
+```{r echo=TRUE}
+shooting_data <- shooting_data %>%
+  select(-c(INCIDENT_KEY,LOC_OF_OCCUR_DESC, JURISDICTION_CODE, LOC_CLASSFCTN_DESC, X_COORD_CD,Y_COORD_CD,Latitude, Longitude, Lon_Lat))
+```
+
+#### Missing Data
+
+There is a lot of missing data in this data set. Let's replace all missing or invalid values with "UNKNOWN".
+
+```{r echo=TRUE}
+shooting_data[shooting_data == "(null)"] <- "UNKNOWN"
+shooting_data[is.na(shooting_data)] <- "UNKNOWN"
+shooting_data[shooting_data == "U"] <- "UNKNOWN"
+```
+
+There are still some values that appear to be incorrect.
+
+* "PERP_AGE_GROUP" contains the values "224", "940", and "1020".
+
+* "VIC_AGE_GROUP" contains the value "1022".
+
+Let's change these values to "UNKNOWN" as well.
+
+```{r echo=TRUE}
+shooting_data$PERP_AGE_GROUP[shooting_data$PERP_AGE_GROUP == 224] <- "UNKNOWN"
+shooting_data$PERP_AGE_GROUP[shooting_data$PERP_AGE_GROUP == 940] <- "UNKNOWN"
+shooting_data$PERP_AGE_GROUP[shooting_data$PERP_AGE_GROUP == 1020] <- "UNKNOWN"
+shooting_data$VIC_AGE_GROUP[shooting_data$VIC_AGE_GROUP == 1022] <- "UNKNOWN"
+```
+
+#### Variable Types
+
+Next, we will change some of the variable types to make them easier to work with.
+
+``` {r echo=TRUE}
+shooting_data <- shooting_data %>%
+  mutate(OCCUR_DATE = mdy(OCCUR_DATE)) %>%
+  mutate(BORO = factor(BORO)) %>%
+  mutate(PERP_SEX = factor(PERP_SEX)) %>%
+  mutate(PERP_RACE = factor(PERP_RACE)) %>%
+  mutate(VIC_SEX = factor(VIC_SEX)) %>%
+  mutate(VIC_RACE = factor(VIC_RACE)) %>%
+  mutate(PERP_AGE_GROUP = factor(PERP_AGE_GROUP,
+                                levels = c("UNKNOWN","<18","18-24","25-44","45-64","65+"))) %>%
+  mutate(VIC_AGE_GROUP = factor(VIC_AGE_GROUP,
+                                levels = c("UNKNOWN","<18","18-24","25-44","45-64","65+")))
+```
+
+#### Cleaned Data
+
+Let's look at a new summary of our data.
+
+``` {r echo=TRUE, message = FALSE}
+summary(shooting_data)
+```
+
+Much better, right? Now, let's get to work.
+
+### Visualize & Analyze Data
+
+Let's begin by building some basic visualizations of our data. This will help us to get a sense of any patterns that might exist within the data.
+
+```{r echo = TRUE}
+shooting_data %>%
+  ggplot(aes(x = BORO, fill = VIC_SEX)) +
+  geom_bar(position = "dodge",
+           alpha = 0.8) +
+  theme_bw() +
+  labs(title = "Victim Sex by Borough",
+       x = "Borough",
+       y = "Number of Incidents",
+       fill = "Victim Sex")
+```
+
+In this visualization, we can see that the most common victim sex in each borough is **male**---and it isn't close.
+
+It is also possible to see that **Brooklyn** has had the most total shooting incidents, while **Staten Island** has had the least.
+
+Let's see if there is a certain time of day in which most incidents occurred.
+
+```{r echo = TRUE, message = FALSE, warning = FALSE}
+shooting_data %>%
+  ggplot(aes(x = OCCUR_TIME)) +
+  geom_bar(alpha = 0.5) +
+  theme_classic() +
+  labs(title = "Number of Incidents by Time of Day",
+       x = "Time of Day (24-Hour)",
+       y = "Number of Incidents")
+```
+
+Here, we can see that most incidents occurred **between evening and early morning**, when it was (presumably) dark outside. There is a clear dip during the daytime---especially in the morning from around 8 - 11 A.M.
+
+Let's also look at the distribution of incidents according to the date on which they occurred.
+
+```{r echo = TRUE, message = FALSE, warning = FALSE}
+shooting_data %>%
+  ggplot(aes(x = OCCUR_DATE)) +
+  geom_bar(alpha = 0.5) +
+  theme_classic() +
+  labs(title = "Number of Incidents by Date",
+       x = "Date",
+       y = "Number of Incidents") +
+  ylim(0,50)
+```
+
+There are so many dates present in the visualization that it is difficult to see any pattern that might be present. Thus, we will zoom our visualization in on one year so we can view the data more carefully.
+
+Let's see which date had the most incidents.
+
+```{r echo = TRUE, message = FALSE, warning = FALSE}
+Mode = function(x){
+    ta = table(x)
+    tam = max(ta)
+    if (all(ta == tam))
+         mod = NA
+    else
+         if(is.numeric(x))
+    mod = as.numeric(names(ta)[ta == tam])
+    else
+         mod = names(ta)[ta == tam]
+    return(mod)
+}
+Mode(shooting_data$OCCUR_DATE)
+```
+
+**July 5, 2020** was the date with the most incidents. 2020 seems to have been an interesting year (perhaps we could have predicted that). Let's zoom in and see if any pattern emerges.
+
+```{r echo = TRUE, message = FALSE, warning = FALSE}
+shooting_data %>%
+  filter(OCCUR_DATE > "2019-12-31", OCCUR_DATE < "2021-1-1") %>%
+  ggplot(aes(x = OCCUR_DATE)) +
+  geom_bar(alpha = 0.5) +
+  theme_classic() +
+  labs(title = "Number of Incidents by Date in 2020",
+       x = "Date",
+       y = "Number of Incidents") +
+  ylim(0,50)
+```
+
+According to this graph, incidents seemed to occur more often during the summer months than others.
+
+Let's pick another year to zoom in on to see if the same pattern emerges.
+
+```{r echo = TRUE, message = FALSE, warning = FALSE}
+shooting_data %>%
+  filter(OCCUR_DATE > "2012-12-31", OCCUR_DATE < "2014-1-1") %>%
+  ggplot(aes(x = OCCUR_DATE)) +
+  geom_bar(alpha = 0.5) +
+  theme_classic() +
+  labs(title = "Number of Incidents by Date in 2013",
+       x = "Date",
+       y = "Number of Incidents") +
+  ylim(0,50)
+```
+
+While there was not as defined a peak during the summer months of 2013, there still seems to have been some increase during that time of year.
+
+Now, I'm interested to know if there is any relationship between time of day and date.
+
+```{r echo = TRUE, message = FALSE, warning = FALSE}
+shooting_data %>%
+  filter(OCCUR_DATE > "2019-12-31", OCCUR_DATE < "2021-1-1") %>%
+  ggplot(aes(x = OCCUR_DATE, y = OCCUR_TIME)) +
+  geom_point(alpha = 0.5) +
+  theme_classic() +
+  labs(title = "Date and Time of Incidents in 2020",
+       x = "Date",
+       y = "Time of Day (24-Hour)")
+```
+
+It appears that the patterns we have seen thus far have coincided.
+
+* The points are more concentrated during the **summer months** and in the **evening through the early morning**.
+
+* This pattern seems to be consistent year-round, with no time of year appearing to differ significantly from any other.
+
+Let's see if this pattern holds for the entire data set, from 2006 to 2022.
+
+```{r echo = TRUE, message = FALSE, warning = FALSE}
+shooting_data %>%
+  ggplot(aes(x = OCCUR_DATE, y = OCCUR_TIME)) +
+  geom_point(alpha = 0.5) +
+  theme_classic() +
+  labs(title = "Date and Time of Incidents (2006 - 2022)",
+       x = "Date",
+       y = "Time of Day (24-Hour)")
+```
+
+This increase in sample size has only served to amplify the pattern. There is a clear *"path through the darkness"* from around 8 - 11 A.M.
+
+Let's analyze the data to find out the time at which the *most* number of incidents occurred.
+
+```{r echo=TRUE}
+Mode(shooting_data$OCCUR_TIME)
+```
+
+The **most** incidents occurred at **11:30 P.M.**
+
+Now, let's see at what time the *least* number of incidents occurred.
+
+```{r echo=TRUE}
+Mode_least = function(x){
+    ta = table(x)
+    tam = min(ta)
+    if (all(ta == tam))
+         mod = NA
+    else
+         if(is.numeric(x))
+    mod = as.numeric(names(ta)[ta == tam])
+    else
+         mod = names(ta)[ta == tam]
+    return(mod)
+}
+Mode_least(shooting_data$OCCUR_TIME)
+```
+
+There are many times at which the **least** number of incidents occurred. Interestingly (and in accordance with our visualizations), they are completely contained between **6:02 A.M. and 12:36 P.M.**---from  around sunrise to noon.
+
+### Model Data
+
+Let's see if we can create a model that can tell us about the total number of deaths each year.
+
+```{r echo = TRUE, message=FALSE, warning=FALSE}
+murders_by_year <- shooting_data %>% 
+  mutate(OCCUR_YEAR = year(OCCUR_DATE),
+         STATISTICAL_MURDER_FLAG = as.factor(STATISTICAL_MURDER_FLAG),
+         MURDER_CODE = if_else(STATISTICAL_MURDER_FLAG == "TRUE", 1, 0)) %>% 
+  select(OCCUR_YEAR, MURDER_CODE) %>% 
+  group_by(OCCUR_YEAR) %>% 
+  summarize(TOTAL_MURDERS = sum(MURDER_CODE))
+
+murders_by_year %>% 
+  ggplot(aes(OCCUR_YEAR, TOTAL_MURDERS)) +
+  geom_col(color = "blue", fill = "blue", alpha = 0.7) +
+  geom_smooth(method = lm, alpha = 0, color = "black") +
+  theme_bw() +
+  labs(title = "Deaths By Shooting Each Year",
+       x = "Year",
+       y = "Total Deaths By Shooting")
+```
+
+Here, we have visualized the total number of deaths caused by shooting incidents each year. Our linear model tells us that overall, from 2006 to 2022, the number of deaths per year decreased slightly. However, this model doesn't show us all of the nuance that exists in the data. We can see that deaths were high in 2006, declined until about 2016, and then increased sharply in 2020.
+
+### Conclusion and Bias Identification
+
+#### Conclusion
+
+By visualizing, analyzing, and modeling our data, we have learned some interesting things:
+
+1. Males have been the most common victims of NYPD shooting incidents since 2006.
+
+2. NYPD shooting incidents occurred most commonly in Brooklyn, compared to other boroughs.
+
+3. Most NYPD shooting incidents occurred between dusk and dawn, with a dramatic decrease during the day.
+
+4. Although shooting incidents happened year-round, there was a defined peak during the summer months.
+
+#### Bias Identification
+
+As with any data analysis project, bias certainly played a role in how I decided to clean, visualize, analyze, and model this data set.
+
+1. The variables I chose to omit.
+
+  + I omitted variables that I deemed unimportant to my analysis.
+  
+  + Another person might have selected different variables to omit.
+  
+2. The variables I chose to utilize in my analysis.
+  
+  + I only used a handful of variables from this data set in my analysis based on what I thought would be interesting.
+  
+  + Another person might have selected different variables to analyze based on their interests and biases.
+  
+3. What I chose to do with missing and invalid data.
+
+  + This is always a subject of controversy. I decided to utilize the existing formatting within the data set and recode all missing values as "UNKNOWN". I also looked through the data to see if there were any values that seemed to be typos or that were invalid for any other reason. I also recoded these values as "UNKNOWN".
+  
+  + Another person might have chosen to do this differently, but I used my best judgment (which, of course, is riddled with bias). 
+  
+4. How I chose to analyze the data.
+
+  + For example, I chose not to analyze the *proportion* of incidents that occurred in each borough relative to that borough's population. Rather, I decided to simply analyze the *total number* of incidents in each borough with no consideration for population. That was my decision based on what I thought would be interesting, but another person might have decided otherwise.
+  
+  + I chose to focus mostly on the relationship between date and time data. This was for a few reasons, but mostly because they were some of the only variables in the data set that were not simple, nominal variables (e.g., sex, race, borough). I thought this would make the analysis more interesting as it allowed me to utilize scatter plots, which I would not have been able to do otherwise.
+  
+Although my own personal biases are evident throughout this document, my awareness of these biases allowed me to try things that I otherwise might not have, as well as to consider relationships that I otherwise might not have.
+
+### Session Info
+
+Here is the session information, for those who are interested.
+
+```{r echo = TRUE}
+sessionInfo()
+```
+
+End.
