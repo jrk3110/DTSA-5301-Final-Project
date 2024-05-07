@@ -1,1 +1,1 @@
-View the two Rmd files above.
+View the Rmd file above.
